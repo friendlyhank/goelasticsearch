@@ -1,16 +1,48 @@
-package main
+package esc
 
-import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/astaxie/beego/logs"
 	"github.com/olivere/elastic"
 	"github.com/olivere/elastic/config"
 )
 
+var elasticSourceMap = make(map[string]*ElasticSource)
+var defaultServer string
 
 type ElasticSource struct{
 	 client *elastic.Client
+}
+
+func Init(){
+	logs.Debug("|foundation|init|elastic|Init")
+	//读取配置
+	redissource := ""
+	sniff := false
+	if redissource != ""{
+		InitElasticServer(redissource,&sniff)
+	}
+}
+
+func InitElasticServer(server string,sniff *bool) bool{
+	cfg := &config.Config{URL: server, Sniff: sniff}
+	elasticSource, err := NewClient(cfg)
+	if err != nil {
+		fmt.Sprintf("Elastic Client Init Err:%v", err)
+		panic(err)
+	}
+	elasticSourceMap[server] =elasticSource
+	return true
+}
+
+func GetElasticDefault() *ElasticSource {
+	if len(defaultServer) == 0 {
+		for _, s := range elasticSourceMap {
+			return s
+		}
+	}
+	return elasticSourceMap[defaultServer]
 }
 
 //NewClient -
@@ -34,7 +66,17 @@ func (es *ElasticSource)GetVersion(host string)string{
 
 //CreateTable -Create an index
 func (es *ElasticSource)CreateTable(ctx context.Context,tableName string)error{
-	_,err := es.client.CreateIndex(tableName).Do(ctx)
+	exists,err := es.client.IndexExists(tableName).Do(ctx)
+	if err != nil{
+		return err
+	}
+	if !exists{
+		//创建索引
+		_,err := es.client.CreateIndex(tableName).Do(ctx)
+		if err != nil{
+			return err
+		}
+	}
 	return err
 }
 
@@ -47,12 +89,12 @@ func (es *ElasticSource)IndexExists(ctx context.Context,tableName string)(bool,e
 //Insert -Add a document to the index
 func (es *ElasticSource)Insert(ctx context.Context,tableName string,id string,data interface{})error{
 	//Insert
-	var err error
-	_,err=es.client.Index().
+	put1,err :=es.client.Index().
 		Index(tableName).
 		Id(id).
 		BodyJson(data).
 		Do(ctx)
+	fmt.Printf("Indexed elastic %s to index %s, type %s\n", put1.Id, put1.Index, put1.Type)
 	return err
 }
 
