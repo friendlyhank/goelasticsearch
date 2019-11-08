@@ -1,0 +1,6 @@
+.idea
+.git
+vueweb/node_modules
+vueweb/dist
+vueweb/test
+vendor/**/*
